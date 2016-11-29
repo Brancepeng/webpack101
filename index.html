@@ -1,0 +1,58 @@
+<html>
+<head>
+	<link rel="stylesheet" type="text/css" href="http://w2ui.com/src/w2ui-1.4.min.css" />
+	<script src="jquery-1.9.0.min.js"></script>
+	<script type="text/javascript" src="http://w2ui.com/src/w2ui-1.4.min.js"></script>
+</head>
+<body>
+<div id="popup1" style="display: none; width: 650px; height: 400px; overflow: auto">
+	<div rel="title">
+		Popup #1 Title
+	</div>
+	<div rel="body">
+		<div style="padding: 10; font-size: 11px; line-height: 150%;">
+			<div style="float:left; background-color:white; width:150px; height:80px; border: 1px solid silver; margin:5px;">
+			</div>
+			This is body of popup #1. You can put any text or HTML inside the body (as well as title and buttons).
+			This is body of popup #1. You can put any text or HTML inside the body (as well as title and buttons).
+			This is body of popup #1. You can put any text or HTML inside the body (as well as title and buttons).
+			This is body of popup #1. You can put any text or HTML inside the body (as well as title and buttons).
+			This is body of popup #1. You can put any text or HTML inside the body (as well as title and buttons).
+			This is body of popup #1. You can put any text or HTML inside the body (as well as title and buttons).
+			This is body of popup #1. You can put any text or HTML inside the body (as well as title and buttons).
+			This is body of popup #1. You can put any text or HTML inside the body (as well as title and buttons).
+			This is body of popup #1. You can put any text or HTML inside the body (as well as title and buttons).
+			This is body of popup #1. You can put any text or HTML inside the body (as well as title and buttons).
+			This is body of popup #1. You can put any text or HTML inside the body (as well as title and buttons).
+		</div>
+	</div>
+	<div rel="buttons">
+		<button class="btn" onclick="$('#popup2').w2popup()">Switch to Popup 2</button>
+	</div>
+</div>
+
+<!-- Second Popup Window -->
+
+<div id="popup2" style="display: none; width: 400px; height: 200px; overflow: auto">
+	<div rel="title">
+		Popup #2
+	</div>
+	<div rel="body">
+		<div style="padding: 10; font-size: 11px; line-height: 150%;">
+			Some other popup text. Some other popup text. Some other popup text. Some other popup text. Some other popup text.
+			Some other popup text. Some other popup text. Some other popup text. Some other popup text. Some other popup text.
+		</div>
+	</div>
+	<div rel="buttons">
+		<button class="btn" onclick="$('#popup1').w2popup()">Switch to Popup 1</button>
+	</div>
+</div>
+</body>
+<script>
+	// popup based on HTML already on the page
+	$('#popup1').w2popup();
+
+	// overlay based on the same HTML
+	$(this).w2overlay($('#popup1 [rel=body]').html(), { css: { width: '600px', padding: '10px' } });
+</script>
+</html>

@@ -1,0 +1,328 @@
+1.如何安全地包装一个模块的代码？
+2.如何唯一标识一个模块？
+3.如何优雅的把模块的API暴露出去？（不能增加全局变量）
+4.如何方便的使用所依赖的模块呢？
+
+随着nodejs的横空出世，开创了一个新纪元，人们可以用js来写服务端的代码了。如果说浏览器端的js即便没有模块化也可以忍的
+话，那服务端是万万不能的。
+大牛云集的CommonJs社区发力，制定了Modules/1.0（http://wiki.commonjs.org/wiki/Modules/1.0）规范，首次定义了一
+个模块应该长啥样。具体来说，Modules/1.0规范包含以下内容：
+1.In a module, there is a free variable "require", that is a function.
+//在一个模块中，必须抱哈一个自由变量‘require’（凡是跨了自己本身所在作用域的变量都是自由变量，包括全局变量和闭包中所定义的变量）,而这个而变量是一个函数。
+    1.The "require" function accepts a module identifier.
+    //定义全局函数require，这个require函数接受一个module的id作为参数。
+    2."require" returns the exported API of the foreign module.
+     //require函数执行后返回所引用的模块暴露出来的API。
+    3.If there is a dependency cycle, the foreign module may not have finished executing at the time
+    it is required by one of its transitive dependencies; in this case, the object returned
+    by "require" must contain at least the exports that the foreign module has prepared before the
+    call to require that led to the current module's execution.
+    //总之一句话，如果被require函数引入的模块中也包含依赖，那么依次加载这些依赖。
+    4.If the requested module cannot be returned, "require" must throw an error.
+    //如果require的模块没有被成功返回，则函数require必须报出一个异常。
+2.In a module, there is a free variable called "exports", that is an object that the module may add its
+ API to as it executes.
+ //在一个标准定义的模块中，还有一个全局变量'exports',这个exports作为一个对象，暴露的API必须作为此对象的属性。
+
+3.modules must use the "exports" object as the only means of exporting.
+//模块必须使用exports对象作为模块的唯一出口。
+
+综合以上特征，遵循commonjs规范的代码看起来是这样的：（来自官方的例子）
+
+//math.js
+
+exports.add = function (){
+    var sum = 0, i = 0, args = arguments, l = args.length;
+        while (i < l) {
+            sum += args[i++];
+        }
+        return sum;
+}
+
+//increment.js
+
+var add  = require('math').add;
+exports.increment = function(){
+    return add(val, 1);
+}
+
+//program.js
+var inc = require('increment').increment;
+var a = 1;
+inc(a); // 2
+
+Modules/1.0规范源于服务端，无法直接用于浏览器端，原因表现为：
+1. 外层没有function包裹，变量全暴漏在全局。如上面例子中increment.js中的add。
+2. 资源的加载方式与服务端完全不同。服务端require一个模块，直接就从硬盘或者内存中读取了，消耗的时间可以忽略。而浏
+览器则不同，需要从服务端来下载这个文件，然后运行里面的代码才能得到API，需要花费一个http请求，也就是说，require后
+面的一行代码，需要资源请求完成才能执行。由于浏览器端是以插入<script>标签的形式来加载资源的（ajax方式不行，有跨域
+问题），没办法让代码同步执行，所以像commonjs那样的写法会直接报错。
+所以，社区意识到，要想在浏览器环境中也能模块化，需要对规范进行升级。顺便说一句，CommonJs原来是叫ServerJs，从名
+字可以看出是专攻服务端的，为了统一前后端而改名CommonJs。（论起名的重要性~）而就在社区讨论制定下一版规范的时候，
+内部发生了比较大的分歧，分裂出了三个主张，渐渐的形成三个不同的派别：
+
+1.Modules/1.x派
+这一波人认为，在现有基础上进行改进即可满足浏览器端的需要，既然浏览器端需要function包装，需要异步加载，那么新增一个
+方案，能把现有模块转化为适合浏览器端的就行了，有点像“保皇派”。基于这个主张，制定了Modules/Transport（http://w
+iki.commonjs.org/wiki/Modules/Transport）规范，提出了先通过工具把现有模块转化为复合浏览器上使用的模块，然后再
+使用的方案。
+browserify就是这样一个工具，可以把nodejs的模块编译成浏览器可用的模块。（Modules/Transport规范晦涩难懂，我也不确
+定browserify跟它是何关联，有知道的朋友可以讲一下）.目前的最新版是Modules/1.1.1（http://wiki.commonjs.org/wiki/Modules/1.1.1），增加了一些require的属性，以及
+模块内增加module变量来描述模块信息，变动不大。其内容主要分为以下几点：http://wiki.commonjs.org/wiki/Modules/1.1.1
+
+1.require is a Function //
+    1.The "require" function accepts a module identifier.
+    2."require" returns the exported API of the foreign module.
+    3.If there is a dependency cycle, the foreign module may not have finished executing at the time it
+     is required by one of its transitive dependencies; in this case, the object returned by "require"
+      must contain at least the exports that the foreign module has prepared before the call to require
+       that led to the current module's execution.
+    4.If the requested module cannot be returned, "require" must throw an error.
+    5.The "require" function may have a "main" property.
+    //require函数可能有个‘main’属性
+        1.This attribute, when feasible, should be read-only, don't delete.
+        //这个属性,在可行的情况下,应该是只读的,不要删除。
+        2.The "main" property must either be undefined or be identical to the "module" object in the context of one loaded module.
+
+    6.The "require" function may have a "paths" attribute, that is a prioritized Array of path Strings,
+     from high to low, of paths to top-level module directories.（注：require函数的paths属性是一个数组。）
+        1.The "paths" property must not exist in "sandbox" (a secured module system).
+        //paths属性不能放在sandbox里面（sandbox是一个安全的模块系统）。
+        2.The "paths" attribute must be referentially identical in all modules.
+        //“paths”属性必须在所有模块中具有相同的优先级。
+
+    模块规范主要内容：
+        1.In a module, there is a free variable "require", which conforms to the above definiton.
+        //在一个模块中,有一个自由变量“require”,这符合上述定义。
+        2.In a module, there is a free variable called "exports", that is an object that the module may add its API to as it executes.
+        //在一个模块中，有一个自由变量exports，模块中所有的API都会以exports的属性的形式暴露出来。
+            1.modules must use the "exports" object as the only means of exporting.
+            //模块唯一的出口就是对象exports。
+        3.In a module, there must be a free variable "module", that is an Object.
+        //在一个模块中，必须有一个自由变量module对象。
+            1.The "module" object must have a "id" property that is the top-level "id" of the module.
+            The "id" property must be such that require(module.id) will return the exports object
+            from which the module.id originated. (That is to say module.id can be passed to another
+            module, and requiring that must return the original module). When feasible this property
+            should be read-only, don't delete.
+
+            2.The "module" object may have a "uri" String that is the fully-qualified URI to the
+            resource from which the module was created. The "uri" property must not exist in a sandbox.
+
+针对这种规范的写实类似这样：
+    //maths.js
+    exports.add = function(){
+        var sum = 0, i = 0, args = arguments, l = args.length;
+            while (i < l) {
+                sum += args[i++];
+            }
+            return sum;
+    }
+
+    //increment.js
+    var add = require('math').add;
+    exports.increment = function(val) {
+        return add(val, 1);
+    };
+
+    //program.js
+    var inc = require('increment').increment;
+    var a = 1;
+    inc(a); // 2
+
+    module.id == "program";
+
+
+
+2. Modules/Async派
+这一波人有点像“革新派”，他们认为浏览器与服务器环境差别太大，不能沿用旧的模块标准。既然浏览器必须异步加载代码，那么模
+块在定义的时候就必须指明所依赖的模块，然后把本模块的代码写在回调函数里。模块的加载也是通过下载-回调这样的过程来进行
+，这个思想就是AMD的基础，由于“革新派”与“保皇派”的思想无法达成一致，最终从CommonJs中分裂了出去，独立制定了浏览器
+端的js模块化规范AMD（Asynchronous Module Definition）（https://github.com/amdjs/amdjs-api/wiki/AMD）
+本文后续会继续讨论AMD规范的内容。
+
+3. Modules/2.0派
+
+这一波人有点像“中间派”，既不想丢掉旧的规范，也不想像AMD那样推到重来。他们认为，Modules/1.0固然不适合浏览器，但它
+里面的一些理念还是很好的，（如通过require来声明依赖），新的规范应该兼容这些，AMD规范也有它好的地方（例如模块的
+预先加载以及通过return可以暴漏任意类型的数据，而不是像commonjs那样exports只能为object），也应采纳。最终他们制
+定了一个Modules/Wrappings（http://wiki.commonjs.org/wiki/Modules/Wrappings）规范，此规范指出了一个模块应该
+如何“包装”，包含以下内容：
+
+    1.全局有一个module变量,用来定义模块；
+    2.通过module.declare方法来定义一个模块；
+    3.module.declare方法只接受一个参数，那就是模块的factory，此factory可以是函数，也可以是对象；如果是对象，
+    那么此模块输出就是此对象。
+    4.模块的factory函数传入三个参数，require，exports，module，用来引入其他依赖和导出本模块的API。
+    5.如果函数factory中最后明确写有return数据，那么return的内容即为模块的输出。（js函数中不写return默认返回undefined）
+
+那么，使用该规范的例子看起来像这样：
+    //可以使用exports对象来对外暴露API；
+    module.declare(function(require,exports,module){
+            exports.foo = 'bar';
+     });
+
+
+    //也可以直接return来对外暴漏数据
+    module.declare(function(require)
+    {
+    return { foo: "bar" };
+    });
+
+AMD/RequireJs的崛起与妥协
+    AMD思想正如其名，异步加载所需模块，然后在回调函数中执行主逻辑，这正是我们在浏览器端开发所习惯了的模式。
+    其作者亲自实现了符合AMD规范的requirejs，AMD/RequireJs迅速被广大开发者所接受。
+
+    AMD规范包含以下内容：
+    1.用全局函数define来定义模块，用法为：define(id?, dependencies?, factory);
+    2.id为模块标识，遵从CommonJS Module Identifiers规范
+    3.dependencies为依赖的模块数组，在factory中需传入形参与之一一对应；
+    4.如果dependencies的值中有”require”、”exports”或”module”，则与commonjs中的实现保持一致
+    5. 如果dependencies省略不写，则默认为[“require”, “exports”, “module”]，factory中也会默认传入require,exports,module
+    6.如果factory为函数，模块对外暴漏API的方法有三种：return任意类型的数据、exports.xxx=xxx、module.exports=xxx
+    7.如果factory为对象，则该对象即为模块的返回值
+
+基于以上几点规范：我们便可以这样来组织模块的代码了：
+    //a.js
+    define(function(){
+        console.log('a.js执行');
+        return {
+            hello:function(){
+                console.log('hello,a.js');
+            }
+        }
+    })
+
+    //b.js
+    define(function(){
+         console.log('b.js执行');
+         return {
+              hello: function(){
+                   console.log('hello, b.js');
+              }
+         }
+    });
+
+    //main.js
+    require(['a','b'],function(a,b){
+        console.log('main.js执行');
+        a.hello();
+        $('#b').click(function(){
+                  b.hello();
+             });
+    });
+
+    上面的main.js被执行的时候，会有如下输出：
+    a.js执行
+    b.js执行
+    main.js执行
+    hello，a.js
+
+    在点击按钮后，会输出：
+    hello，b.js
+
+    这结局，如你所愿吗？大体来看，是没什么问题的，因为你要的两个hello方法都正确的执行了。
+    但是如果细细来看，b.js被预先加载并且预先执行了，（第二行输出），b.hello这个方法是在
+    点击了按钮之后才会执行，如果用户压根就没点，那么b.js中的代码应不应该执行呢？
+
+    这其实也是AMD/RequireJs被吐槽的一点，预先下载没什么争议，由于浏览器的环境特点，被依赖的
+    模块肯定要预先下载的。问题在于，是否需要预先执行？如果一个模块依赖了十个其他模块，那么在
+    本模块的代码执行之前，要先把其他十个模块的代码都执行一遍，不管这些模块是不是马上会被用到。
+    这个性能消耗是不容忽视的。
+
+    另一点被吐槽的是，在定义模块的时候，要把所有依赖模块都罗列一遍，而且还要在factory中作为形
+    参传进去，要写两遍很大一串模块名称，像这样：
+    define(['a', 'b', 'c', 'd', 'e', 'f', 'g'], function(a, b, c, d, e, f, g){  ..... })
+
+    编程过程有点不爽：
+
+    好的一点是，AMD保留了commonjs中的require、exprots、module这三个功能（上面提到的第4条）。你也
+    可以不把依赖罗列在dependencies数组中。而是在代码中用require来引入，如下：
+
+    define(function(){
+        console.log('main2.js执行');
+        require(['a'],function(a){
+            a.hello();
+        });
+         $('#b').click(function(){
+                  require(['b'], function(b){
+                       b.hello();
+                  });
+             });
+    });
+
+我们在define的参数中未写明依赖，那么main2.js在执行的时候，就不会预先加载a.js和b.js，
+只是执行到require语句的时候才会去加载，上述代码的输出如下：
+
+    main2.js执行
+    a.js执行
+    hello,a.js
+
+    可以看到b.js并未执行，从网络请求中看，b.js也并未被下载。只有在按钮被点击的时候b.js才会被下载执行，
+    并且在回调函数中执行模块中的方法。这就是名副其实的“懒加载”了。
+    这样的懒加载无疑会大大减轻初始化时的损耗（下载和执行都被省去了），但是弊端也是显而易见的，
+    在后续执行a.hello和b.hello时，必须得实时下载代码然后在回调中才能执行，这样的用户体验是不好的，
+    用户的操作会有明显的延迟卡顿。
+    但这样的现实并非是无法接受的，毕竟是浏览器环境，我们已经习惯了操作网页时伴随的各种loading。。。
+
+    但是话说过来，有没有更好的方法来处理问题呢？资源的下载阶段还是预先进行，资源执行阶段后置，等到需要的时候再
+    执行。这样一种折衷的方式，能够融合前面两种方式的优点，而又回避了缺点。
+    这就是Modules/Wrappings规范，还记得前面提到的“中间派”吗？
+    在AMD的阵营中，也有一部分人提出这样的观点，代码里写一堆回调实在是太恶心了，他们更喜欢这样来使用模块：
+
+    var a = require('a');
+    a.hello();
+
+    $('#b').click(function(){
+            var b = require('b');
+            b.hello();
+    });
+
+    于是，AMD也终于决定作妥协，兼容Modules/Wrappings的写法，但只是部分兼容，例如并没有使用module.declare来定义模块，
+    而还是用define，模块的执行时机也没有改变，依旧是预先执行。因此，AMD将此兼容称为Simplified CommonJS wrapping，即并
+    不是完整的实现Modules/Wrappings。
+
+    作了此兼容后，使用requirejs就可以这么写代码了：
+
+    //d.js
+
+    define(function(require,exports,module){
+        console.log('d.js执行');
+        return{
+            helloA:function(){
+                var a = require('a');
+                a.hello();
+            },
+            run:function(){
+                $('#b').click(function(){
+                        var b = require('b');
+                        b.hello();
+                });
+            }
+        }
+    });
+
+    注意定义模块时候的轻微差异，dependencies数组为空，但是factory函数的形参必须手工写上require,exports,module，（这
+    不同于之前的dependencies和factory形参全不写），这样写即可使用Simplified CommonJS wrapping风格，与commonjs的格
+    式一致了。
+
+    虽然使用上看起来简单，然而在理解上却给后人埋下了一个大坑。因为AMD只是支持了这样的语法，而并没有真正实现模块的延后执行。
+    什么意思呢？上面的代码，正常来讲应该是预先下载a.js和b.js，然后在执行模块的helloA方法的时候开始执行a.js里面的代码，在
+    点击按钮的时候开始执行b.js中的方法。实际却不是这样，只要此模块被别的模块引入，a.js和b.js中的代码还是被预先执行了
+
+    我们把上面的代码命名为d.js，在别的地方使用它：
+
+    require(['d'],function(d){
+
+    })
+
+    上面的代码会输出：
+
+        a.js执行
+        b.js执行
+        d.js执行
+
+    可以看出，尽管还未调用d模块的API，里面所依赖的a.js和b.js中的代码已经执行了。AMD的这种只实现语法却未真正实现功能的做法容易给人造成理解上的困难，被强烈吐槽。
+    （在requirejs2.0中，作者声明已经处理了此问题（https://github.com/jrburke/requirejs/wiki/Upgrading-to-Requi
+    reJS-2.0#delayed），但是我用2.1.20版测试的时候还是会预先执行，我有点不太明白原因，如果有懂的高手请指教）
+
